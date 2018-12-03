@@ -35,7 +35,7 @@ void loop() {
   // GET SENSOR VALUES /////////////////////////////////////////////
   STEER = analogRead(STEER_IN);
   
-  STEER = map(STEER, 0, 600, 0, 255);
+  STEER = map(STEER, 700, 1020, 0, 255);
   STEER = constrain(STEER, 0, 255);
   Serial.println(STEER);
 
@@ -44,7 +44,7 @@ void loop() {
   CAN.write(STEER);
   CAN.endPacket();
 
-  delay(80);
+  delay(50);
   
 
 //  // CAN READ /////////////////////////////////////////////////////
