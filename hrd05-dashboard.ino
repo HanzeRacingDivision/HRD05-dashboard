@@ -11,14 +11,22 @@
 */
 
 #include <CAN.h>
+#include <TM1637Display.h>  //https://github.com/avishorp/TM1637
 
 #define STEER_IN 4
+
+const int CLK = 4; //Set the CLK pin connection to the display
+const int DIO = 3; //Set the DIO pin connection to the display
+
+TM1637Display display(CLK, DIO);  //set up the 4-Digit Display.
 
 int STEER = 0;
 
 void setup() {  
   Serial.begin(115200);
   while (!Serial);
+
+  display.setBrightness(0x0a);  //set the diplay to maximum brightness
 
   Serial.println("HRD05 DASHBOARD");
 
@@ -30,7 +38,6 @@ void setup() {
 }
 
 void loop() {
-
 
   // GET SENSOR VALUES /////////////////////////////////////////////
   STEER = analogRead(STEER_IN);
@@ -45,7 +52,9 @@ void loop() {
   CAN.endPacket();
 
   delay(50);
-  
+
+  // DISPLAY ///////////////////////////////////////////////////////
+  display.showNumberDec(STEER); //Display the Variable value
 
 //  // CAN READ /////////////////////////////////////////////////////
 //  int packetSize = CAN.parsePacket();
