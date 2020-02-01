@@ -42,21 +42,28 @@ void loop() {
 
   CAN_update();
 
-  if(digitalRead(startbutton) == HIGH && digitalRead(TS) == HIGH)           /// Need to comment the "if" for testing purposes
-  {
+    DMC_TRQS.can_id=0x258;
+    DMC_TRQS.can_dlc=8;                                                       /// Sending to pedalbox the inverter "ready" state for testing
+    DMC_TRQS.data[0]=1;
+    DMC_TRQS.data[6]=220;
+
+    mcp2515.sendMessage(&DMC_TRQS);
+
+  //if(digitalRead(startbutton) == HIGH && digitalRead(TS) == HIGH)           /// Need to comment the "if" for testing purposes
+  //{
     DASH_MSG.can_id=0x036;
-    DASH_MSG.can_dlc=2;                                                     /// Need to add latching logic for the startbutton ( not pressing the button it shouldn't reset it, but TS being off resets it
+    DASH_MSG.can_dlc=2;                                                       /// Need to add latching logic for the startbutton ( not pressing the button it shouldn't reset it, but TS being off resets it
     DASH_MSG.data[0]=1;
-    DASH_MSG.data[1]=0;
+    DASH_MSG.data[1]=1;
     mcp2515.sendMessage(&DASH_MSG);
     delay(100);
-  }
+  //}
 
   delay(500);
 
   if(digitalRead(TS) == HIGH)
     digitalWrite(TSled, LOW);
-  else                                /// Tractive system light turns on if the tractive system is turned off.
+  else                                     /// Tractive system light turns on if the tractive system is turned off.
     digitalWrite(TSled, HIGH);
 
 }
