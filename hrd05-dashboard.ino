@@ -5,86 +5,115 @@
    / __  / /_/ / / / / / /_/  __/  / _, _/ /_/ / /__/ / / / / /_/ /  / /_/ / /| |/ / (__  ) / /_/ / / / /
   /_/ /_/\__,_/_/ /_/ /___/\___/  /_/ |_|\__,_/\___/_/_/ /_/\__, /  /_____/_/ |___/_/____/_/\____/_/ /_/ 
   
-  CAN Reciever code for the HRD05
-  Mark Oosting, Wout Veltman, 2019
+  Dashboard code for the HRD05
+  Mark Oosting, 2020
+  Armand Micu, 2020
   
 */
 
-#include <CAN.h>
-#include <TM1637Display.h>  //https://github.com/avishorp/TM1637
+#include <SPI.h>
+#include <mcp2515.h>    /// Some other libraries will be included when switching to the ESP32 + Transciever setup.
+#define startbutton 3
+#define AMSled 4           /// It is unknown for me now how will the signal of the IMD or AMS communicate with the ESP. 
+#define IMDled 5           /// I took a look at the datasheet of the IMD and I think it's possible to get an 2V yes-or-no singal of the status. I assumed something similar with the AMS. 
+#define TSled 6
+#define TS 7
 
-#define STEER_IN 4
+//Shutdown circuit: 12 Volts, 3 A. 
 
-const int CLK = 4; //Set the CLK pin connection to the display
-const int DIO = 3; //Set the DIO pin connection to the display
+//Brake pedal signal: CAN-bus. 
 
-TM1637Display display(CLK, DIO);  //set up the 4-Digit Display.
+//APPS signal: CAN-bus. 
 
-int STEER = 0;
+//CAN-bus: 5V CAN-bus 500000 Bd (baudrate, symbols per second). 
 
-void setup() {  
-  Serial.begin(115200);
-  while (!Serial);
 
-  display.setBrightness(0x0a);  //set the diplay to maximum brightness
+MCP2515 mcp2515(10);
+struct can_frame MSG;                       /// Generic CAN message 
+struct can_frame DASH_MSG= {0x036, 2};
+struct can_frame DMC_TRQS= {0x258, 8};
+struct can_frame DMC_CTRL= {0x210, 8};
 
-  Serial.println("HRD05 DASHBOARD");
+void startup_led_check(){
+  digitalWrite(TSled, HIGH);
+  delay(300);
+  digitalWrite(AMSled, HIGH);
+  delay(300);
+  digitalWrite(IMDled, HIGH);
+  delay(300);
+  digitalWrite(TSled, LOW);
+  digitalWrite(AMSled, LOW);
+  digitalWrite(IMDled, LOW);
+  delay(300);
+  digitalWrite(TSled, HIGH);
+  digitalWrite(AMSled, HIGH);
+  digitalWrite(IMDled, HIGH);
+  delay(100);
+  digitalWrite(TSled, LOW);
+  digitalWrite(AMSled, LOW);
+  digitalWrite(IMDled, LOW);     
+}
 
-  // start the CAN bus at 500 kbps
-  if (!CAN.begin(500E3)) {
-    Serial.println("Starting CAN failed!");
-    while (1);
-  }
+void setup() {
+  SPI.begin(); 
+  Serial.begin(9600);
+  pinMode(startbutton, INPUT);
+  pinMode(TS, INPUT);
+  pinMode(IMDled, OUTPUT);
+  pinMode(AMSled, OUTPUT);
+  pinMode(TSled, OUTPUT);
+
+  mcp2515.reset();
+  mcp2515.setBitrate(CAN_500KBPS,MCP_8MHZ);             ///Initializing mcp2515 CAN, speed/bitrate, sets to normal mode
+  mcp2515.setNormalMode();
+
+  startup_led_check();
+  
+  
+
 }
 
 void loop() {
 
-  // GET SENSOR VALUES /////////////////////////////////////////////
-  STEER = analogRead(STEER_IN);
-  
-  STEER = map(STEER, 700, 1020, 0, 255);
-  STEER = constrain(STEER, 0, 255);
-  Serial.println(STEER);
+  if(digitalRead(startbutton) == HIGH && digitalRead(TS)==HIGH)               /// Need to comment the "if" for testing purposes
+    {
+      DASH_MSG.can_id=0x036;
+      DASH_MSG.can_dlc=2;                                                     /// Need to add latching logic for the startbutton ( not pressing the button it shouldn't reset it, but TS being off resets it
+      DASH_MSG.data[0]=1;
+      DASH_MSG.data[1]=0;
+      mcp2515.sendMessage(&DASH_MSG);
+      delay(100);
+    }
 
-  // CAN SEND /////////////////////////////////////////////////////
-  CAN.beginPacket(0x15);
-  CAN.write(STEER);
-  CAN.endPacket();
+    delay(500);
 
-  delay(50);
+    DMC_TRQS.can_id=0x258;
+    DMC_TRQS.can_dlc=8;
+    DMC_TRQS.data[0]=1;
+    DMC_TRQS.data[6]=220;
 
-  // DISPLAY ///////////////////////////////////////////////////////
-  display.showNumberDec(STEER); //Display the Variable value
+    mcp2515.sendMessage(&DMC_TRQS);
+    
+   if(digitalRead(TS)==HIGH)
+      digitalWrite(TSled, LOW);
+      else                          /// Tractive system light turns on if the tractive system is turned off.
+      digitalWrite(TSled, HIGH);
 
-//  // CAN READ /////////////////////////////////////////////////////
-//  int packetSize = CAN.parsePacket();
-//
-//  if(packetSize) {
-//
-//    int i = 0;
-//    int packetID = CAN.packetId();
-//
-//    byte data[11];
-//
-//    switch (packetID) {
-//      case 0x258:
-//        while (CAN.available()) {
-//          data[i] = CAN.read();         
-//          i++;
-//        }
-//
-//        word SpdAct = data[6];
-//        SpdAct << 8;
-//        SpdAct | data[7];
-//
-//        Serial.println(SpdAct);
-//       break;
-//
-//      default:
-//        Serial.print("Unknown ID: ");
-//        Serial.print(packetID);
-//        Serial.println();
-//        break;
-//    }
-//  }
+
+   if (mcp2515.readMessage(&MSG) == MCP2515::ERROR_OK){  /// If there are no errors, start reading message pointer
+    
+    if(DMC_CTRL.can_id == MSG.can_id) {
+//      for(int j=0; j<7; j++)
+//        Serial.print(bitRead(MSG.data[0],j ));
+//      Serial.println();                                     /// PROBLEM WITH FIRST BYTE OF DMC_CONTROL
+      for(int i=0; i<6; i++){
+        Serial.print(MSG.data[i], BIN);
+        Serial.println();
+      }
+      Serial.println();
+
+    }
+  }
+
+
 }
